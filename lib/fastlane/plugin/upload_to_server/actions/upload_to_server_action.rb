@@ -1,5 +1,4 @@
 require 'fastlane/action'
-require 'rest-client'
 require_relative '../helper/upload_to_server_helper'
 
 module Fastlane
@@ -13,6 +12,7 @@ module Fastlane
         params[:ipa] = config[:ipa]
         params[:file] = config[:file]
         params[:method] = config[:method]
+        params[:timeout] = config[:timeout]
 
         params[:multipartPayload] = config[:multipartPayload]
         params[:headers] = config[:headers]
@@ -30,7 +30,6 @@ module Fastlane
         upload_custom_file(params, apk_file) if apk_file.to_s.length > 0
         upload_custom_file(params, ipa_file) if ipa_file.to_s.length > 0
         upload_custom_file(params, custom_file) if custom_file.to_s.length > 0
-
       end
       
       def self.upload_custom_file(params, custom_file)
@@ -48,15 +47,11 @@ module Fastlane
       end
 
       def self.upload_file(params, multipart_payload)
-        request = RestClient::Request.new(
-          method: params[:method],
-          url: params[:endPoint],
-          payload: multipart_payload,
-          headers: params[:headers],
-          log: Logger.new(STDOUT)
-        )
+        connection = Faraday.new(params[:endPoint], request: { timeout: params[:timeout] }) do |conn|
+          conn.response :logger, Logger.new(STDOUT)
+        end
+        response = connection.run_request(params[:method], multipart_payload, params[:headers])
 
-        response = request.execute
         UI.message(response)
         UI.success("Successfully finished uploading the fille") if response.code == 200 || response.code == 201
       end
@@ -115,7 +110,13 @@ module Fastlane
                                   description: "request method",
                                   optional: true,
                                   default_value: :post,
-                                  type: Symbol)
+                                  type: Symbol),
+          FastlaneCore::ConfigItem.new(key: :timeout,
+                                       env_name: "",
+                                       description: "timeout",
+                                       optional: true,
+                                       type: Integer,
+                                       default_value: 60)
 
         ]
       end
