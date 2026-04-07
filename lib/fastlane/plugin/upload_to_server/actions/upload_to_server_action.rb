@@ -3,6 +3,10 @@ require_relative '../helper/upload_to_server_helper'
 
 module Fastlane
   module Actions
+    module SharedValues
+      UPLOAD_RESPONSE = :UPLOAD_RESPONSE
+    end
+
     class UploadToServerAction < Action
       def self.run(config)
         params = {}
@@ -47,13 +51,17 @@ module Fastlane
       end
 
       def self.upload_file(params, multipart_payload)
+        Actions.lane_context[SharedValues::UPLOAD_RESPONSE] = nil
         connection = Faraday.new(params[:endPoint], request: { timeout: params[:timeout] }) do |conn|
           conn.response :logger, Logger.new(STDOUT)
         end
         response = connection.run_request(params[:method], multipart_payload, params[:headers])
-
+        
         UI.message(response)
-        UI.success("Successfully finished uploading the fille") if response.code == 200 || response.code == 201
+        if response.code == 200 || response.code == 201
+          UI.success("Successfully finished uploading the fille")
+          Actions.lane_context[SharedValues::UPLOAD_RESPONSE] = response
+        end
       end
 
       def self.description
