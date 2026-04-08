@@ -1,9 +1,13 @@
 require 'fastlane/action'
-require 'rest-client'
+require 'mime/types'
 require_relative '../helper/upload_to_server_helper'
 
 module Fastlane
   module Actions
+    module SharedValues
+      UPLOAD_RESPONSE = :UPLOAD_RESPONSE
+    end
+
     class UploadToServerAction < Action
       def self.run(config)
         params = {}
@@ -13,6 +17,7 @@ module Fastlane
         params[:ipa] = config[:ipa]
         params[:file] = config[:file]
         params[:method] = config[:method]
+        params[:timeout] = config[:timeout] || 60
 
         params[:multipartPayload] = config[:multipartPayload]
         params[:headers] = config[:headers]
@@ -30,35 +35,31 @@ module Fastlane
         upload_custom_file(params, apk_file) if apk_file.to_s.length > 0
         upload_custom_file(params, ipa_file) if ipa_file.to_s.length > 0
         upload_custom_file(params, custom_file) if custom_file.to_s.length > 0
-
       end
       
       def self.upload_custom_file(params, custom_file)
         multipart_payload = params[:multipartPayload]
-        multipart_payload[:multipart] = true
-        if multipart_payload[:fileFormFieldName]
-          key = multipart_payload[:fileFormFieldName]
-          multipart_payload["#{key}"] = File.new(custom_file, 'rb')
-        else
-          multipart_payload[:file] = File.new(custom_file, 'rb')
-        end
+        file_part = Faraday::Multipart::FilePart.new(File.new(custom_file, 'rb'), MIME::Types.type_for(custom_file).first.content_type)
+        key = multipart_payload[:fileFormFieldName] ? multipart_payload[:fileFormFieldName].to_s : :file
+        multipart_payload[key] = file_part
 
-      UI.message multipart_payload
-      upload_file(params, multipart_payload)
+        UI.message multipart_payload
+        upload_file(params, multipart_payload)
       end
 
       def self.upload_file(params, multipart_payload)
-        request = RestClient::Request.new(
-          method: params[:method],
-          url: params[:endPoint],
-          payload: multipart_payload,
-          headers: params[:headers],
-          log: Logger.new(STDOUT)
-        )
-
-        response = request.execute
+        Actions.lane_context[SharedValues::UPLOAD_RESPONSE] = nil
+        connection = Faraday.new do |conn|
+          conn.request :multipart
+          conn.options.timeout = params[:timeout]
+        end
+        response = connection.run_request(params[:method], params[:endPoint], multipart_payload, params[:headers])
+        
         UI.message(response)
-        UI.success("Successfully finished uploading the fille") if response.code == 200 || response.code == 201
+        if response.status == 200 || response.status == 201
+          UI.success("Successfully finished uploading the fille")
+        end
+        Actions.lane_context[SharedValues::UPLOAD_RESPONSE] = response.body
       end
 
       def self.description
@@ -70,7 +71,7 @@ module Fastlane
       end
 
       def self.return_value
-        # If your method provides a return value, you can describe here what it does
+        Actions.lane_context[SharedValues::UPLOAD_RESPONSE]
       end
 
       def self.details
@@ -115,7 +116,13 @@ module Fastlane
                                   description: "request method",
                                   optional: true,
                                   default_value: :post,
-                                  type: Symbol)
+                                  type: Symbol),
+          FastlaneCore::ConfigItem.new(key: :timeout,
+                                       env_name: "",
+                                       description: "timeout",
+                                       optional: true,
+                                       type: Integer,
+                                       default_value: 60)
 
         ]
       end

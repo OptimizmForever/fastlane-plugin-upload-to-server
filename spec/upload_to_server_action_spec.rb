@@ -1,3 +1,4 @@
+
 describe Fastlane::Actions::UploadToServerAction do
   describe Fastlane::FastFile do
     describe '#run' do
@@ -17,7 +18,7 @@ describe Fastlane::Actions::UploadToServerAction do
               endPoint: 'https://yourdomain.com'
               })
           end").runner.execute(:test)
-        end.to raise_error("No IPA or APK file path given, pass using `ipa: 'ipa path'` or `apk: 'apk path'`")
+        end.to raise_error("No IPA or APK or a file path given, pass using `ipa: 'ipa path'` or `apk: 'apk path' or file:`")
       end
       it "raise an error if both ipa and apk were given" do
         expect do
